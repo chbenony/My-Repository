@@ -1,269 +1,58 @@
-/*************************************************************************************
-* Purpose/Description: Program that manipulates an image from a 24-bit uncompressed
-* bmp file
-* Author's Name: Chelsea Benony
-* Certification:
-*  I hereby certify that this work is my own, and none of it is the work of any
-*  owther person.
-* *************************************************************************************/
+//
+//  main.c
+//  finalexampractice
+//
+//  Created by Chelsea Benony on 7/26/17.
+//  Copyright © 2017 Chelsea Benony. All rights reserved.
+//
 
-#include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
-#include "bmplib.h"
-/**
- * This method prints out the usage of bmptool
- */
-void usage(){
-	fprintf(stderr, "usage: bmptool [-s scale | -r degree | -f][-o output_file][input_file]\n");
-	exit(1);
-}
+#include <stdlib.h>
+#include <pthread.h>
 
-/*
- * This method enlarges a 24-bit, uncompressed .bmp file
- * that has been read in using readFile()
- *
- * original - an array containing the original PIXELs, 3 bytes per each
- * rows     - the original number of rows
- * cols     - the original number of columns
- *
- * scale    - the multiplier applied to EACH OF the rows and columns, e.g.
- *           if scale=2, then 2* rows and 2*cols
- *
- * new      - the new array containing the PIXELs, allocated within
- * newrows  - the new number of rows (scale*rows)
- * newcols  - the new number of cols (scale*cols)
- */
-int enlarge(PIXEL* original, int rows, int cols, int scale,
-	PIXEL** new, int* newrows, int* newcols)
-{
-	/* THIS IS THE METHOD THAT YOU SHOULD WRITE */
-	int row, col, i, j;
-	if ((rows <= 0) || (cols <= 0))
-		return -1;
-	*newrows = scale * rows;
-	*newcols = scale * cols;
-	*new = (PIXEL*)malloc((*newrows)*(*newcols) * sizeof(PIXEL));
+#define ROWS 100
+#define COLS 100
+#define MAX 32
 
-	for (row = 0; row < rows; row++) {
-		for (i = 0; i < scale; i++) {
-			for (col = 0; col < cols; col++) {
-				for (j = 0; j < scale; j++) {
-					PIXEL* o = original + row*cols + col;
-					PIXEL* n = (*new) + row*cols*scale*scale + cols*scale*i + cols*scale + j;
-					*n = *o;
-				}
-			}
-		}
-	}
-	return 0;
-}
+pthread_mutex_t mutex_matrix;
+pthread_cond_t cv_matrix;
+int count = 0, sum = 0;
 
-/*
- * This method rotates a 24-bit, uncompressed .bmp file that has been read 
- * in using readFile(). The rotation is expressed in degrees and can be
- * positive, negative, or 0 -- but it must be a multiple of 90 degrees
- * 
- * original - an array containing the original PIXELs, 3 bytes per each
- * rows     - the number of rows
- * cols     - the number of columns
- * rotation - a positive or negative rotation, 
- *
- * new      - the new array containing the PIXELs, allocated within
- * newrows  - the new number of rows
- * newcols  - the new number of cols
- */
-int rotate(PIXEL* original, int rows, int cols, int rotation,
-	PIXEL** new, int* newrows, int* newcols)
-{
-	/* THIS IS THE METHOD THAT YOU SHOULD WRITE */
-	int row, col;
+void* create_stuff();
+void* destroy_stuff();
 
-	if (rotation % 360 == 0) {
-		*newrows = rows;
-		*newcols = cols;
-		*new = (PIXEL*)malloc((*newrows)*(*newcols) * sizeof(PIXEL));
-
-		for (row = 0; row < rows; row++) {
-			for (col = 0; col < cols; col++) {
-				PIXEL* o = original + row*cols + col;
-				PIXEL* n = (*new) + (cols - col - 1)*rows + row;
-				*n = *o;
-			}
-		}
-	}
-	else if ((rotation > 0 && rotation % 180 == 0) || (rotation < 0 && rotation % 180 == 0)) {
-		*newrows = rows;
-		*newcols = cols;
-		*new = (PIXEL*)malloc((*newrows) * (*newcols) * sizeof(PIXEL));
-
-		for (row = 0; row < rows; row++) {
-			for (col = 0; col < cols; col++) {
-				PIXEL* o = original + row * cols + col;
-				PIXEL* n = (*new) + (rows - row)*cols - (col + 1);
-				*n = *o;
-			}
-		}
-	}
-	else if ((rotation > 0 && rotation % 90 == 0) || (rotation < 0 && rotation % 270 == 0)) {
-		*newrows = cols;
-		*newcols = rows;
-		*new = (PIXEL*)malloc((*newrows) * (*newcols) * sizeof(PIXEL));
-
-		for (row = 0; row < rows; row++) {
-			for (col = 0; col < cols; col++) {
-				PIXEL* o = original + row*cols + col;
-				PIXEL* n = (*new) + col*rows + (rows - row - 1);
-				*n = *o;
-			}
-		}
-	}
-
-	return 0;
-}
-		
-
-/*
- * This method horizontally flips a 24-bit, uncompressed bmp file
- * that has been read in using readFile(). 
- * 
- * THIS IS GIVEN TO YOU SOLELY TO LOOK AT AS AN EXAMPLE
- * TRY TO UNDERSTAND HOW IT WORKS
- *
- * original - an array containing the original PIXELs, 3 bytes per each
- * rows     - the number of rows
- * cols     - the number of columns
- *
- * new      - the new array containing the PIXELs, allocated within
- */
-int flip (PIXEL *original, PIXEL **new, int rows, int cols) 
-{
-  int row, col;
-
-  if ((rows <= 0) || (cols <= 0)) return -1;
-
-  *new = (PIXEL*)malloc(rows*cols*sizeof(PIXEL));
-
-  for (row=0; row < rows; row++)
-    for (col=0; col < cols; col++) {
-      PIXEL* o = original + row*cols + col;
-      PIXEL* n = (*new) + row*cols + (cols-1-col);
-      *n = *o;
+int main(int argc, const char * argv[]) {
+    int *array = malloc(ROWS*COLS*sizeof(int));
+    create_stuff();
+    pthread_t thread[ROWS];
+    for (int i = 0; i < ROWS; i++){
+        pthread_create(&thread[i], NULL, matrix_sum((void*)i), NULL);
     }
-
-  return 0;
-}
-
-int main(int argc, char* argv[])
-{
-  int r, c, nr, nc;
-  PIXEL *b, *nb;
-  char* infile;
-  char* outfile;
- 
-  //The getopt flags
-  int fl, ro, sc, ou, nro;
-  int index;
-  int scale, rotate1, temp;
-
-  outfile = NULL;
-  infile = NULL;
-
-  index = 0;
-  scale = rotate1 = 0;
-  fl = ro = sc = ou = nro = 0;
-
-  while ((c = getopt(argc, argv, "srfo")) != -1) {
-	  switch (c) {
-	  case 's':
-		  if (sc) {
-			  fprintf(stderr, "Duplicate options\n");
-			  exit(-1);
-		  }
-
-		  sc = 1;
-		  break;
-
-	  case 'r':
-		  if (ro) {
-			  fprintf(stderr, "Duplicate options\n");
-			  exit(-1);
-		  }
-		  ro = 1;
-		  break;
-
-	  case 'f':
-		  if (fl) {
-			  fprintf(stderr, "Duplicate options\n");
-			  exit(-1);
-		  }
-		  fl = 1;
-		  break;
-
-	  case 'o':
-		  if (ou) {
-			  fprintf(stderr, "Duplicate options\n");
-			  exit(-1);
-		  }
-		  ou = 1;
-		  break;
-
-	  case '?':
-		  temp = atoi(argv[optind]);
-		  if ((temp == 0 || temp % 90 == 0) && !nro && ro) {
-			  nro = 1;
-			  rotate1 = temp;
-		  }
-		  break;
-
-	  default:
-		  usage();
-		  printf("default");
-	  }	
-	 }
-  argc -= optind;
-  argv += optind;
-
-  if (argc < 1 && !nro && !fl){
-	  fprintf(stderr, "Too few arguments");
-	  exit(-1);
-  }
- 
-  //assume if arguments are true, they are in order
-  if (sc){
-	scale = atoi(argv[index++]);
-  }
-  if (ro && !nro){
-	rotate1 = atoi(argv[index++]);
-  }
-  if (ou){
-	outfile = argv[index++];
-  }
-  if (argc - 1 == index){
-	infile = argv[index];
-  }
+    destroy_stuff();
+    for (int i = 0; i < ROWS; i++){
+        pthread_join(thread[i], NULL);
+    }
    
-  //read the input file
-  readFile("example.bmp", &r, &c, &b);
-  //execute function calls based on command line flags
-  if (fl) {
-	  flip(b, &nb, r, c);
-  }
-  if (sc) {
-	  enlarge(b, r, c, scale, &nb, &nr, &nc);
-	  r = nr;
-	  c = nc;
-  }
-  if (ro) {
-	  rotate(b, r, c, rotate1, &nb, &nr, &nc);
-	  r = nr;
-	  c = nc;
-  }
- 
-  //write the results to the output file
-  writeFile("result.bmp", r, c, nb);
+    return 0;
+}
+void* creates_tuff(){
+    pthread_mutex_init(&mutex_matrix, NULL);
+    pthread_cond_init(&cv_matrix, NULL);
     
-  free(b);
-  free(nb);
-  return 0;
+}
+void* destroy_stuff(){
+    pthread_mutex_destroy(&mutex_matrix);
+    pthread_cond_destroy(&cv_matrix);
+}
+void* matrix_sum(void* arg){
+    pthread_mutex_lock(&mutex_matrix);
+    
+    if (count >= MAX)
+        pthread_cond_wait(&cv_matrix, &mutex_matrix);
+    count++;
+    pthread_mutex_unlock(&mutex_matrix);
+    int row_sum = 0;
+    for (int i = 0; i < ROWS; i++){
+        rows_sum +=
+    }
 }
